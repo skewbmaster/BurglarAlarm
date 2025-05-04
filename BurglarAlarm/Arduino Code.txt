@@ -1,0 +1,215 @@
+﻿// ------------------- Sensor Base Class -------------------
+// Abstract base class for any type of sensor (e.g., PIR or magnetic)
+class Sensor {
+protected:
+        int pin;
+public:
+        Sensor(int p) : pin(p) { pinMode(pin, INPUT); }
+        virtual bool isTriggered() = 0; // Pure virtual method to be overridden
+};
+
+
+// ------------------- PIR Sensor Class -------------------
+class PIRSensor : public Sensor {
+public:
+        PIRSensor(int p) : Sensor(p) {}
+        bool isTriggered() override {
+            return digitalRead(pin) == HIGH;
+        }
+};
+
+
+// ------------------- Magnetic Switch Sensor Class -------------------
+class MagneticSensor : public Sensor {
+public:
+        MagneticSensor(int p) : Sensor(p) {}
+        bool isTriggered() override {
+            return digitalRead(pin) == HIGH;
+        }
+};
+
+
+// ------------------- LED Class -------------------
+// Controls any LED (e.g., status indicators)
+class LED {
+private:
+        int pin;
+public:
+        LED(int p) : pin(p) { pinMode(pin, OUTPUT); }
+        void on() { digitalWrite(pin, HIGH); }
+        void off() { digitalWrite(pin, LOW); }
+};
+
+
+// ------------------- Buzzer Class -------------------
+class Buzzer {
+private:
+        int pin;
+public:
+        Buzzer(int p) : pin(p) { pinMode(pin, OUTPUT); }
+        void sound() { digitalWrite(pin, HIGH);
+        tone(12, 200, 1000); // (pin, frequency in Hz, duration in ms)    
+         }
+        void stop() { digitalWrite(pin, LOW); }
+};
+
+
+// ------------------- Solenoid Lock Class -------------------
+class Solenoid {
+private:
+        int pin;
+public:
+        Solenoid(int p) : pin(p) {
+            pinMode(pin, OUTPUT);
+            digitalWrite(pin, HIGH); // Initially locked
+        }
+        void unlock() { digitalWrite(pin, HIGH); }
+        void lock() { digitalWrite(pin, LOW); }
+};
+
+
+// ------------------- Button Class -------------------
+// Generic input button class (used for PIN, and unlock)
+class Button {
+private:
+        int pin;
+public:
+        Button(int p) : pin(p) { pinMode(pin, INPUT); }
+        bool isPressed() { return digitalRead(pin) == HIGH; }
+};
+
+
+// ------------------- Alarm System Class -------------------
+// Core class that ties all components together to form the alarm system
+class AlarmSystem {
+private:
+        PIRSensor* pir;
+        MagneticSensor* window;
+        LED* doorLED;
+        LED* windowLED;
+        LED* armedLED;
+        Buzzer* buzzer;
+        Solenoid* lock;
+        Button* pinPad;
+        Button* solenoidBtn;
+
+
+        bool alarmTriggered = false;
+
+
+public:
+        // Constructor to link all component instances
+        AlarmSystem(PIRSensor* pir, MagneticSensor* window, LED* doorLED,
+                    LED* windowLED, LED* armedLED, Buzzer* buzzer,
+                    Solenoid* lock,
+                    Button* pinPad, Button* solenoidBtn)
+            : pir(pir), window(window), doorLED(doorLED),
+              windowLED(windowLED), armedLED(armedLED), buzzer(buzzer),
+              lock(lock), pinPad(pinPad), solenoidBtn(solenoidBtn) {}
+
+
+        // Called every loop cycle to update system state
+        void update() {
+
+
+            // System is armed
+            armedLED->on();
+            Serial.println("System Armed");
+
+
+            // Motion detection logic
+            if (pir->isTriggered()) {
+                Serial.println("Motion Detected!");
+                triggerAlarm();
+            }
+
+
+            // Window breach detection
+            if (!window->isTriggered()) {
+                windowLED->on();
+                Serial.println("Window Breach!");
+                triggerAlarm();
+            } else {
+                windowLED->off();
+            }
+
+
+            // Manual unlock via solenoid button
+            if (solenoidBtn->isPressed()) {
+                doorLED->off(); // Door is unlocked
+                unlockWithPin(); // Require PIN entry
+            } else {
+                doorLED->on(); // Door is locked
+            }
+        }
+
+
+        // Handles alarm sounding and reset
+        void triggerAlarm() {
+            buzzer->sound();
+            Serial.println("Alarm Triggered!");
+            delay(3000); // Simulated duration (use 20 min for real use)
+            buzzer->stop();
+            alarmTriggered = true; // Prevent retriggering too quickly
+        }
+
+
+        // Solenoid unlock with PIN verification
+        void unlockWithPin() {
+            lock->unlock();
+            Serial.println("Solenoid unlocking...");
+
+
+            unsigned long startTime = millis();
+            bool pinEntered = false;
+
+
+            // Wait x seconds for correct PIN
+            while (millis() - startTime < 5000) {
+                if (pinPad->isPressed()) {
+                    pinEntered = true;
+                    Serial.println("PIN Entered Correctly!");
+                    break;
+                }
+            }
+
+
+            if (!pinEntered) {
+                triggerAlarm(); // Trigger alarm on failed/unentered PIN
+            }
+
+
+            lock->lock(); // Re-lock the solenoid after process
+        }
+};
+
+
+// ------------------- Pin Assignments -------------------
+PIRSensor pirSensor(4);
+MagneticSensor windowSensor(8);
+LED doorLED(7);
+LED windowLED(6);
+LED armedLED(5);
+Buzzer buzzer(12);
+Solenoid solenoid(13);
+Button armButton(9);
+Button pinButton(10);
+Button solenoidButton(11);
+
+
+// ------------------- Alarm System Instance -------------------
+AlarmSystem alarm(&pirSensor, &windowSensor, &doorLED, &windowLED, &armedLED,
+                      &buzzer, &solenoid, &pinButton, &solenoidButton);
+
+
+// ------------------- Arduino Setup Function -------------------
+void setup() {
+        Serial.begin(9600);
+        Serial.println("System Initialising...");
+}
+
+
+// ------------------- Arduino Main Loop -------------------
+void loop() {
+        alarm.update(); // Continuously update the system
+}

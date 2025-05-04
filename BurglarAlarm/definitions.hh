@@ -1,8 +1,14 @@
 
+
 #ifndef ALARM_DEFINITIONS_H
 #define ALARM_DEFINITIONS_H
+#include "volume-library/Volume.h"
 
 #define LED_COUNT 3
+#define BUZZER_FREQUENCY 400
+
+#define LED1_PIN 122
+
 
 class ArduinoInput {
   private:
@@ -36,6 +42,23 @@ class ArduinoOutput {
   public:
     ArduinoOutput(int pinNumber);
     void SetValue(bool value);
+};
+
+class LED : public ArduinoOutput {
+  public:
+    LED(int ledPin) : ArduinoOutput(ledPin) { };
+    void on();
+    void off();
+};
+
+class Buzzer : public ArduinoOutput {
+  private:
+    Volume volumeController;
+    byte volumeLevel; 
+  public:
+    Buzzer(int buzzerPin);
+    void play();
+    void stop();
 };
 
 class PinPad {
