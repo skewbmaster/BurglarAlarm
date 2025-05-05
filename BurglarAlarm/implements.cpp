@@ -26,6 +26,24 @@ MotionSensor::MotionSensor(int sensorPin) : HoldSensor(sensorPin) {
 
 }
 
+TriggerSensor::TriggerSensor(int sensorPin) : ArduinoInput(sensorPin) {
+  triggered = false; 
+  lastState = LOW; 
+}
+void TriggerSensor::Update() {
+  byte state = this->GetValue();
+  if (state == HIGH && lastState == LOW) {
+    triggered = true;
+  }
+  lastState = state; 
+}
+bool TriggerSensor::IsTriggered() {
+  return triggered;
+}
+void TriggerSensor::Reset() {
+  triggered = false;
+}
+
 ArduinoOutput::ArduinoOutput(int pinNumber) {
   arduinoPin = pinNumber;
   pinMode(arduinoPin, OUTPUT);
@@ -34,21 +52,23 @@ void ArduinoOutput::SetValue(bool value) {
   digitalWrite(arduinoPin, value);
 }
 
-void LED::On() {
-  SetValue(HIGH);
+void LED::SetState(byte newState) {
+  state = newState;
+  SetValue(state);
 }
-void LED::Off() {
-  SetValue(LOW);
+void LED::FlipState() {
+  state = state ? LOW : HIGH;
+  SetValue(state);
 }
 
 Solenoid::Solenoid(int solenoidPin) : ArduinoOutput(solenoidPin) {
-  digitalWrite(arduinoPin, HIGH);
+  state = HIGH;
+  digitalWrite(arduinoPin, state);
 }
-void Solenoid::Lock() {
-  digitalWrite(arduinoPin, HIGH);
-}
-void Solenoid::Unlock() {
-  digitalWrite(arduinoPin, LOW);
+void Solenoid::ChangeLockState() {
+  // Elegantly flip the state with inline if
+  state = state ? LOW : HIGH;
+  digitalWrite(arduinoPin, state);
 }
 
 Buzzer::Buzzer(int buzzerPin, byte initialVolume, Volume* volController) : ArduinoOutput(buzzerPin) { 
@@ -67,67 +87,37 @@ void Buzzer::ChangeVolume(byte newVolume) {
   Play();
 }
 
-SerialCommunicationDevice::SerialCommunicationDevice(char* prefixText) {
-  messagePrefix = prefixText;
-  Serial.write("Startup");
+SerialCommunicationDevice::SerialCommunicationDevice() {
+  
 }
-void SerialCommunicationDevice::SendSignal(char* message) {
+// Returns true when success
+bool SerialCommunicationDevice::SendMessage(char* message) {
   while (!Serial.availableForWrite()) {}
-  Serial.write(messagePrefix);
-  Serial.write(message);
-}
-String SerialCommunicationDevice::ReceiveSignal() {
-  if (Serial.available()) {
-    return Serial.readString();
-  }
-}
+  Serial.print(message);
 
-UnlockHandler::UnlockHandler(SerialCommunicationDevice* commObject) {
-  locked = true;
-  entering = false;
-  solenoidLock = new Solenoid(SOLENOID_PIN);
-  communication = commObject;
-
-  //rfidSensor = new HoldSensor(DOOR_RFID_PIN);
-}
-bool UnlockHandler::Update() {
-  if (!entering) {
+  while (!Serial.available()) {}
+  String ack = Serial.readString();
+  if (ack.equals(ACKNOWLEDGE_MSG)) {
     return true;
-  }
-
-  //TODO Send request to confirm identity - either facial or pin
-  while (millis() - timerStart < CONFIRM_ENTRY_TIMEOUT_MS) {
-    //TODO Receive confirmation from python
-    Entry entryState = Success;
-    /*if (entryState == Success) {
-      SetLock(false);
-      return true;
-    }
-    else if (entryState == Failure) {
-      return false;
-    }
-    */
   }
   return false;
 }
-void UnlockHandler::ConfirmEntry() {
-  timerStart = millis();
-  entering = true;
-}
-void UnlockHandler::SetLock(bool state) {
-  locked = state;
-  if (!locked) {
-    entering = false;
+String SerialCommunicationDevice::ReceiveMessage() {
+  if (Serial.available()) {
+    String received = Serial.readString();
+    Serial.print(ACKNOWLEDGE_MSG);
+    return received;
   }
+  return String();
 }
 
 ControlPanel::ControlPanel(Buzzer* buzzerObject) {
   buzzer = buzzerObject;
-  communication = new SerialCommunicationDevice(PREFIX_MSG);
+  communication = new SerialCommunicationDevice();
   windowSensor = new HoldSensor(WINDOW_SENSOR_PIN);
-  doorSensor = new HoldSensor(DOOR_RFID_PIN);
   motionSensor = new MotionSensor(MOTION_SENSOR_PIN);
-  unlockHandler = new UnlockHandler(communication);
+  doorSolenoidButton = new TriggerSensor(DOOR_RFID_BUTTON_PIN);
+  solenoidLock = new Solenoid(SOLENOID_PIN);
 
   LEDs[DoorLED] = new LED(LED_DOOR_PIN);
   LEDs[WindowLED] = new LED(LED_WINDOW_PIN);
@@ -135,61 +125,97 @@ ControlPanel::ControlPanel(Buzzer* buzzerObject) {
 
   alarmArmed = true;
   alarmActive = false;
-
+  confirmingIdentity = false;
+  reArming = false;
 }
 void ControlPanel::Update() {
   windowSensor->Update();
-  doorSensor->Update();
   motionSensor->Update();
-
-  if (alarmActive) {
-
-  }
+  doorSolenoidButton->Update();
+  
+  UnlockHandler();
 
   if (!alarmArmed) {
-    LEDs[ArmedLED]->Off();
+    LEDs[ArmedLED]->SetState(LOW);
     DisarmedUpdate();
     return;
   }
-  else {
-    LEDs[ArmedLED]->On();
-  }
-
+  LEDs[ArmedLED]->SetState(HIGH);
   if (windowSensor->GetState() || motionSensor->GetState()) {
     SoundAlarm();
     return;
   } 
-
-  if (doorSensor->GetState()) {
-    unlockHandler->ConfirmEntry();
-    unlockHandler->Update();
-  }
-  
 }
 void ControlPanel::DisarmedUpdate() {
-  if (doorSensor->GetState()) {
-    LEDs[DoorLED]->Off();
-  }
-  else {
-    LEDs[DoorLED]->On();
-  }
   if (windowSensor->GetState()) {
-    LEDs[WindowLED]->Off();
+    LEDs[WindowLED]->SetState(LOW);
   }
   else {
-    LEDs[WindowLED]->On();
+    LEDs[WindowLED]->SetState(HIGH);
+  }
+}
+void ControlPanel::UnlockHandler() {
+  if (doorSolenoidButton->IsTriggered()) {
+    solenoidLock->ChangeLockState();
+    LEDs[DoorLED]->FlipState();
+    doorSolenoidButton->Reset();
+    //TODO send message saying door changed open state
+    //communication->Send
+    if (alarmArmed) {
+      timerStart = millis();
+      confirmingIdentity = true;
+    }
   }
 
+  if (!confirmingIdentity && !alarmActive) {
+    return;
+  }
 
-  
+  if (!alarmActive && millis() - timerStart > CONFIRM_ENTRY_TIMEOUT_MS) {
+    SoundAlarm();
+  }
+
+  EntryOutcome outcome = CommunicateEntry();
+  switch (outcome) {
+    Success: {
+      StopAlarm();
+
+      break;
+    }
+    Failure: {
+      SoundAlarm();
+      break;
+    }
+    Waiting:
+    default: {
+      break;
+    }
+  }
 }
-
+ControlPanel::EntryOutcome ControlPanel::CommunicateEntry() {
+  //TODO Send request to confirm identity - either facial or pin
+  //TODO Receive confirmation from python
+  EntryOutcome outcome = Success;
+  /*if (outcome == Success) {
+    SetLock(false);
+    return true;
+  }
+  else if (outcome == Failure) {
+    return false;
+  }
+  */
+  return outcome;
+}
 void ControlPanel::SoundAlarm() {
   buzzer->Play();
   windowSensor->Reset();
-  doorSensor->Reset();
   motionSensor->Reset();
   alarmActive = true;
+}
+void ControlPanel::StopAlarm() {
+  buzzer->Stop();
+  alarmActive = false;
+  confirmingIdentity = false;
 }
 
 

@@ -7,14 +7,16 @@
 #define LED_COUNT 3
 #define BUZZER_FREQUENCY 400
 #define CONFIRM_ENTRY_TIMEOUT_MS 45000
+
 #define PREFIX_MSG "ALARM"
+#define ACKNOWLEDGE_MSG "ACK"
 
 #define LED_DOOR_PIN 7
 #define LED_WINDOW_PIN 6
 #define LED_ARMED_PIN 5
 #define BUZZER_PIN 4
 #define MOTION_SENSOR_PIN 9
-#define DOOR_RFID_PIN 10
+#define DOOR_RFID_BUTTON_PIN 18
 #define WINDOW_SENSOR_PIN 8
 #define SOLENOID_PIN 11
 
@@ -45,6 +47,17 @@ class MotionSensor : public HoldSensor {
     MotionSensor(int sensorPin);
 };
 
+class TriggerSensor : public ArduinoInput {
+  private:
+    bool triggered;
+    byte lastState;
+  public:
+    TriggerSensor(int sensorPin);
+    void Update();
+    bool IsTriggered();
+    void Reset();
+};
+
 class ArduinoOutput {
   protected:
     int arduinoPin;
@@ -54,17 +67,20 @@ class ArduinoOutput {
 };
 
 class LED : public ArduinoOutput {
+  private:
+    byte state;
   public:
     LED(int ledPin) : ArduinoOutput(ledPin) { };
-    void On();
-    void Off();
+    void SetState(byte newState);
+    void FlipState();
 };
 
 class Solenoid : public ArduinoOutput {
+  private:
+    bool state;
   public:
     Solenoid(int solenoidPin);
-    void Lock();
-    void Unlock();
+    void ChangeLockState();
 };
 
 class Buzzer : public ArduinoOutput {
@@ -80,42 +96,20 @@ class Buzzer : public ArduinoOutput {
 
 class SerialCommunicationDevice {
   protected:
-    char* messagePrefix;
     bool success;
-    void SendSignal(char* message);
-    String ReceiveSignal();
   public:
-    virtual SerialCommunicationDevice(char* prefixText);
-    //virtual bool GetUnlocked();
-    //virtual void Update();
+    SerialCommunicationDevice();
+    bool SendMessage(char* message);
+    String ReceiveMessage();
 };
 
-
-class UnlockHandler {
+class ControlPanel {
   private:
     typedef enum {
       Success,
       Failure,
       Waiting
-    } Entry;
-
-    SerialCommunicationDevice* communication;
-    Solenoid* solenoidLock;
-    bool locked;
-    bool entering;
-    unsigned long timerStart;
-
-    void SetLock(bool state);
-
-  public:
-    UnlockHandler(SerialCommunicationDevice* commObject);
-    void ConfirmEntry();
-    bool Update();
-    bool GetLocked();
-};
-
-class ControlPanel {
-  private:
+    } EntryOutcome;
     typedef enum {
       DoorLED,
       WindowLED,
@@ -124,15 +118,21 @@ class ControlPanel {
 
     Buzzer* buzzer;
     HoldSensor* windowSensor;
-    HoldSensor* doorSensor;
+    TriggerSensor* doorSolenoidButton;
     MotionSensor* motionSensor;
-    UnlockHandler* unlockHandler;
+    Solenoid* solenoidLock;
     SerialCommunicationDevice* communication;
     LED* LEDs[LED_COUNT];
+
     bool alarmActive, alarmArmed;
+    bool confirmingIdentity, reArming;
+    unsigned long timerStart;
 
     void DisarmedUpdate();
     void SoundAlarm();
+    void StopAlarm();
+    void UnlockHandler();
+    ControlPanel::EntryOutcome CommunicateEntry();
 
   public:
     ControlPanel(Buzzer* buzzerObject);

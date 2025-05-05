@@ -1,7 +1,7 @@
 #include "definitions.hh"
 #include "Volume.h"
 
-#define UPDATE_MS 25
+#define UPDATE_MS 20
 #define DEFAULT_BUZZER_VOLUME 200
 
 Volume* volumeController;
@@ -30,5 +30,6 @@ void loop() {
   }
   timestamp = millis();
 
+  // Continuously update the main class
   alarm->Update();
 }
