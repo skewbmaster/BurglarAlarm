@@ -64,26 +64,53 @@ void Buzzer::ChangeVolume(byte newVolume) {
   Play();
 }
 
-UnlockHandler::UnlockHandler() {
-  locked = true;
-  solenoidLock = Solenoid(SOLENOID_PIN);
-  // might not need faceMotion = 
-  rfidSensor = HoldSensor(222);
-  faceDetector = FacialRecognition(); 
-  pinPad = PinPad();
+SerialCommunicationDevice::SerialCommunicationDevice() {
+
 }
 
+PinPad::PinPad() {
 
+}
+
+FacialRecognition::FacialRecognition() {
+
+}
+
+UnlockHandler::UnlockHandler() {
+  locked = true;
+  solenoidLock = new Solenoid(SOLENOID_PIN);
+  // might not need faceMotion = 
+  rfidSensor = new HoldSensor(222);
+  faceDetector = new FacialRecognition(); 
+  pinPad = new PinPad();
+}
 
 ControlPanel::ControlPanel(Buzzer* buzzerObject) {
   buzzer = buzzerObject;
-  windowSensor = HoldSensor(WINDOW_SENSOR_PIN);
-  doorSensor = MotionSensor(MOTION_SENSOR_PIN);
-  unlockHandler = UnlockHandler();
+  windowSensor = new HoldSensor(WINDOW_SENSOR_PIN);
+  doorSensor = new HoldSensor(MOTION_SENSOR_PIN);
+  unlockHandler = new UnlockHandler();
 
-  //LEDs[0] = new LED(LED_DOOR_PIN);
-  //LEDs[1] = new LED(LED_WINDOW_PIN);
-  //LEDs[2] = new LED(LED_ARMED_PIN);
+  LEDs[DoorLED] = new LED(LED_DOOR_PIN);
+  LEDs[WindowLED] = new LED(LED_WINDOW_PIN);
+  LEDs[ArmedLED] = new LED(LED_ARMED_PIN);
 
   systemActive = false;
 }
+void ControlPanel::Update() {
+  if (!systemActive) {
+    LEDs[ArmedLED]->Off();
+
+  }
+
+  LEDs[ArmedLED]->On();
+
+  
+}
+void ControlPanel::SoundAlarm() {
+  buzzer->Play();
+}
+
+
+
+

@@ -84,8 +84,8 @@ class SerialCommunicationDevice {
     char* ReceiveSignal();
   public:
     virtual SerialCommunicationDevice();
-    virtual bool GetUnlocked();
-    virtual void Update();
+    //virtual bool GetUnlocked();
+    //virtual void Update();
 };
 
 class PinPad : SerialCommunicationDevice {
@@ -103,11 +103,11 @@ class FacialRecognition : SerialCommunicationDevice {
 
 class UnlockHandler {
   private:
-    PinPad pinPad;
-    FacialRecognition faceDetector;
-    HoldSensor rfidSensor;
+    PinPad* pinPad;
+    FacialRecognition* faceDetector;
+    HoldSensor* rfidSensor;
     //MotionSensor faceMotion;
-    Solenoid solenoidLock;
+    Solenoid* solenoidLock;
     bool locked;
 
   public:
@@ -119,11 +119,16 @@ class UnlockHandler {
 
 class ControlPanel {
   private:
+    typedef enum {
+      DoorLED,
+      WindowLED,
+      ArmedLED
+    } LEDNames;
     Buzzer* buzzer;
-    HoldSensor windowSensor;
-    HoldSensor doorSensor;
-    UnlockHandler unlockHandler;
-    //LED LEDs[LED_COUNT];
+    HoldSensor* windowSensor;
+    MotionSensor* doorSensor;
+    UnlockHandler* unlockHandler;
+    LED* LEDs[LED_COUNT];
     bool systemActive;
 
   public:
@@ -131,6 +136,7 @@ class ControlPanel {
     void Activate();
     void Deactivate();
     void Update();
+    void SoundAlarm();
 };
 
 
