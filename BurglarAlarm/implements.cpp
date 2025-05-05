@@ -9,14 +9,17 @@ ArduinoInput::ArduinoInput(int pinNumber) {
 
 bool ArduinoInput::GetValue() {
   int pinState = digitalRead(arduinoPin);
-  return pinState > 0;
+  return pinState == HIGH;
 }
 
 HoldSensor::HoldSensor(int pinNumber) : ArduinoInput(pinNumber) {
   detected = false;
 }
+void HoldSensor::Update() {
+  detected = this->GetValue();
+}
 void HoldSensor::Reset() {
-
+  detected = false;
 }
 
 MotionSensor::MotionSensor(int sensorPin) : HoldSensor(sensorPin) {
@@ -64,51 +67,129 @@ void Buzzer::ChangeVolume(byte newVolume) {
   Play();
 }
 
-SerialCommunicationDevice::SerialCommunicationDevice() {
-
+SerialCommunicationDevice::SerialCommunicationDevice(char* prefixText) {
+  messagePrefix = prefixText;
+  Serial.write("Startup");
+}
+void SerialCommunicationDevice::SendSignal(char* message) {
+  while (!Serial.availableForWrite()) {}
+  Serial.write(messagePrefix);
+  Serial.write(message);
+}
+String SerialCommunicationDevice::ReceiveSignal() {
+  if (Serial.available()) {
+    return Serial.readString();
+  }
 }
 
-PinPad::PinPad() {
-
-}
-
-FacialRecognition::FacialRecognition() {
-
-}
-
-UnlockHandler::UnlockHandler() {
+UnlockHandler::UnlockHandler(SerialCommunicationDevice* commObject) {
   locked = true;
+  entering = false;
   solenoidLock = new Solenoid(SOLENOID_PIN);
-  // might not need faceMotion = 
-  rfidSensor = new HoldSensor(222);
-  faceDetector = new FacialRecognition(); 
-  pinPad = new PinPad();
+  communication = commObject;
+
+  //rfidSensor = new HoldSensor(DOOR_RFID_PIN);
+}
+bool UnlockHandler::Update() {
+  if (!entering) {
+    return true;
+  }
+
+  //TODO Send request to confirm identity - either facial or pin
+  while (millis() - timerStart < CONFIRM_ENTRY_TIMEOUT_MS) {
+    //TODO Receive confirmation from python
+    Entry entryState = Success;
+    /*if (entryState == Success) {
+      SetLock(false);
+      return true;
+    }
+    else if (entryState == Failure) {
+      return false;
+    }
+    */
+  }
+  return false;
+}
+void UnlockHandler::ConfirmEntry() {
+  timerStart = millis();
+  entering = true;
+}
+void UnlockHandler::SetLock(bool state) {
+  locked = state;
+  if (!locked) {
+    entering = false;
+  }
 }
 
 ControlPanel::ControlPanel(Buzzer* buzzerObject) {
   buzzer = buzzerObject;
+  communication = new SerialCommunicationDevice(PREFIX_MSG);
   windowSensor = new HoldSensor(WINDOW_SENSOR_PIN);
-  doorSensor = new HoldSensor(MOTION_SENSOR_PIN);
-  unlockHandler = new UnlockHandler();
+  doorSensor = new HoldSensor(DOOR_RFID_PIN);
+  motionSensor = new MotionSensor(MOTION_SENSOR_PIN);
+  unlockHandler = new UnlockHandler(communication);
 
   LEDs[DoorLED] = new LED(LED_DOOR_PIN);
   LEDs[WindowLED] = new LED(LED_WINDOW_PIN);
   LEDs[ArmedLED] = new LED(LED_ARMED_PIN);
 
-  systemActive = false;
+  alarmArmed = true;
+  alarmActive = false;
+
 }
 void ControlPanel::Update() {
-  if (!systemActive) {
-    LEDs[ArmedLED]->Off();
+  windowSensor->Update();
+  doorSensor->Update();
+  motionSensor->Update();
+
+  if (alarmActive) {
 
   }
 
-  LEDs[ArmedLED]->On();
+  if (!alarmArmed) {
+    LEDs[ArmedLED]->Off();
+    DisarmedUpdate();
+    return;
+  }
+  else {
+    LEDs[ArmedLED]->On();
+  }
+
+  if (windowSensor->GetState() || motionSensor->GetState()) {
+    SoundAlarm();
+    return;
+  } 
+
+  if (doorSensor->GetState()) {
+    unlockHandler->ConfirmEntry();
+    unlockHandler->Update();
+  }
+  
+}
+void ControlPanel::DisarmedUpdate() {
+  if (doorSensor->GetState()) {
+    LEDs[DoorLED]->Off();
+  }
+  else {
+    LEDs[DoorLED]->On();
+  }
+  if (windowSensor->GetState()) {
+    LEDs[WindowLED]->Off();
+  }
+  else {
+    LEDs[WindowLED]->On();
+  }
+
 
   
 }
+
 void ControlPanel::SoundAlarm() {
   buzzer->Play();
+  windowSensor->Reset();
+  doorSensor->Reset();
+  motionSensor->Reset();
+  alarmActive = true;
 }
 
 

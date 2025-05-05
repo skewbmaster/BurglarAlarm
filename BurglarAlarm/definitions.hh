@@ -1,19 +1,20 @@
-
 #ifndef ALARM_DEFINITIONS_H
 #define ALARM_DEFINITIONS_H
 
 #include "Volume.h"
 #include <stdio.h>
 
-
 #define LED_COUNT 3
 #define BUZZER_FREQUENCY 400
+#define CONFIRM_ENTRY_TIMEOUT_MS 45000
+#define PREFIX_MSG "ALARM"
 
 #define LED_DOOR_PIN 7
 #define LED_WINDOW_PIN 6
 #define LED_ARMED_PIN 5
 #define BUZZER_PIN 4
-#define MOTION_SENSOR_PIN 5
+#define MOTION_SENSOR_PIN 9
+#define DOOR_RFID_PIN 10
 #define WINDOW_SENSOR_PIN 8
 #define SOLENOID_PIN 11
 
@@ -21,9 +22,9 @@
 class ArduinoInput {
   protected:
     int arduinoPin;
+    virtual bool GetValue();
   public:
     ArduinoInput(int pinNumber);
-    virtual bool GetValue();
 };
 
 class HoldSensor : public ArduinoInput {
@@ -31,8 +32,9 @@ class HoldSensor : public ArduinoInput {
     bool detected;
   public:
     HoldSensor(int pinNumber);
-    void Reset();
+    bool GetState() { return detected; };
     void Update();
+    void Reset();
 };
 
 class MotionSensor : public HoldSensor {
@@ -81,39 +83,34 @@ class SerialCommunicationDevice {
     char* messagePrefix;
     bool success;
     void SendSignal(char* message);
-    char* ReceiveSignal();
+    String ReceiveSignal();
   public:
-    virtual SerialCommunicationDevice();
+    virtual SerialCommunicationDevice(char* prefixText);
     //virtual bool GetUnlocked();
     //virtual void Update();
 };
 
-class PinPad : SerialCommunicationDevice {
-  public:
-    PinPad();
-    void Reset();
-};
-
-class FacialRecognition : SerialCommunicationDevice {
-  public:
-    FacialRecognition();
-    void BeginDetection();
-    void EndDetection();
-};
 
 class UnlockHandler {
   private:
-    PinPad* pinPad;
-    FacialRecognition* faceDetector;
-    HoldSensor* rfidSensor;
-    //MotionSensor faceMotion;
+    typedef enum {
+      Success,
+      Failure,
+      Waiting
+    } Entry;
+
+    SerialCommunicationDevice* communication;
     Solenoid* solenoidLock;
     bool locked;
+    bool entering;
+    unsigned long timerStart;
+
+    void SetLock(bool state);
 
   public:
-    UnlockHandler();
-    void Update();
-    void Lock();
+    UnlockHandler(SerialCommunicationDevice* commObject);
+    void ConfirmEntry();
+    bool Update();
     bool GetLocked();
 };
 
@@ -124,19 +121,22 @@ class ControlPanel {
       WindowLED,
       ArmedLED
     } LEDNames;
+
     Buzzer* buzzer;
     HoldSensor* windowSensor;
-    MotionSensor* doorSensor;
+    HoldSensor* doorSensor;
+    MotionSensor* motionSensor;
     UnlockHandler* unlockHandler;
+    SerialCommunicationDevice* communication;
     LED* LEDs[LED_COUNT];
-    bool systemActive;
+    bool alarmActive, alarmArmed;
+
+    void DisarmedUpdate();
+    void SoundAlarm();
 
   public:
     ControlPanel(Buzzer* buzzerObject);
-    void Activate();
-    void Deactivate();
     void Update();
-    void SoundAlarm();
 };
 
 
