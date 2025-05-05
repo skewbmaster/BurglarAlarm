@@ -1,17 +1,25 @@
 
-
 #ifndef ALARM_DEFINITIONS_H
 #define ALARM_DEFINITIONS_H
-#include "volume-library/Volume.h"
+
+#include "Volume.h"
+#include <stdio.h>
+
 
 #define LED_COUNT 3
 #define BUZZER_FREQUENCY 400
 
-#define LED1_PIN 122
+#define LED_DOOR_PIN 7
+#define LED_WINDOW_PIN 6
+#define LED_ARMED_PIN 5
+#define BUZZER_PIN 4
+#define MOTION_SENSOR_PIN 5
+#define WINDOW_SENSOR_PIN 8
+#define SOLENOID_PIN 11
 
 
 class ArduinoInput {
-  private:
+  protected:
     int arduinoPin;
   public:
     ArduinoInput(int pinNumber);
@@ -32,12 +40,11 @@ class MotionSensor : public HoldSensor {
     int detectionDuration;
     int timeThreshold;
   public:
-    MotionSensor();
-    //
+    MotionSensor(int sensorPin);
 };
 
 class ArduinoOutput {
-  private:
+  protected:
     int arduinoPin;
   public:
     ArduinoOutput(int pinNumber);
@@ -47,35 +54,51 @@ class ArduinoOutput {
 class LED : public ArduinoOutput {
   public:
     LED(int ledPin) : ArduinoOutput(ledPin) { };
-    void on();
-    void off();
+    void On();
+    void Off();
+};
+
+class Solenoid : public ArduinoOutput {
+  public:
+    Solenoid(int solenoidPin);
+    void Lock();
+    void Unlock();
 };
 
 class Buzzer : public ArduinoOutput {
   private:
-    Volume volumeController;
     byte volumeLevel; 
+    Volume* volumeController;
   public:
-    Buzzer(int buzzerPin);
-    void play();
-    void stop();
+    Buzzer(int buzzerPin, byte initialVolume, Volume* volumeController);
+    void Play();
+    void Stop();
+    void ChangeVolume(byte newVolume);
 };
 
-class PinPad {
+class SerialCommunicationDevice {
+  protected:
+    char* messagePrefix;
+    bool success;
+    void SendSignal(char* message);
+    char* ReceiveSignal();
+  public:
+    virtual SerialCommunicationDevice();
+    virtual bool GetUnlocked();
+    virtual void Update();
+};
+
+class PinPad : SerialCommunicationDevice {
   public:
     PinPad();
     void Reset();
-    void Update();
-    bool GetUnlocked();
 };
 
-class FacialRecognition {
+class FacialRecognition : SerialCommunicationDevice {
   public:
     FacialRecognition();
     void BeginDetection();
     void EndDetection();
-    void Update();
-    bool GetUnlocked();
 };
 
 class UnlockHandler {
@@ -83,8 +106,8 @@ class UnlockHandler {
     PinPad pinPad;
     FacialRecognition faceDetector;
     HoldSensor rfidSensor;
-    MotionSensor faceMotion;
-    ArduinoOutput solenoidLock;
+    //MotionSensor faceMotion;
+    Solenoid solenoidLock;
     bool locked;
 
   public:
@@ -96,18 +119,18 @@ class UnlockHandler {
 
 class ControlPanel {
   private:
+    Buzzer* buzzer;
     HoldSensor windowSensor;
     HoldSensor doorSensor;
     UnlockHandler unlockHandler;
-    ArduinoOutput LEDs[LED_COUNT];
+    //LED LEDs[LED_COUNT];
     bool systemActive;
 
   public:
-    ControlPanel();
+    ControlPanel(Buzzer* buzzerObject);
     void Activate();
     void Deactivate();
     void Update();
-
 };
 
 
