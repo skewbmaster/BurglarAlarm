@@ -8,8 +8,9 @@
 #define BUZZER_FREQUENCY 400
 #define CONFIRM_ENTRY_TIMEOUT_MS 45000
 
-#define PREFIX_MSG "ALARM"
 #define ACKNOWLEDGE_MSG "ACK"
+#define ENTRY_MSG "ENTRY_CONFIRM"
+#define DOOR_MSG "DOOR_CHANGE"
 
 #define LED_DOOR_PIN 7
 #define LED_WINDOW_PIN 6
@@ -37,14 +38,6 @@ class HoldSensor : public ArduinoInput {
     bool GetState() { return detected; };
     void Update();
     void Reset();
-};
-
-class MotionSensor : public HoldSensor {
-  private:
-    int detectionDuration;
-    int timeThreshold;
-  public:
-    MotionSensor(int sensorPin);
 };
 
 class TriggerSensor : public ArduinoInput {
@@ -119,7 +112,7 @@ class ControlPanel {
     Buzzer* buzzer;
     HoldSensor* windowSensor;
     TriggerSensor* doorSolenoidButton;
-    MotionSensor* motionSensor;
+    TriggerSensor* motionSensor;
     Solenoid* solenoidLock;
     SerialCommunicationDevice* communication;
     LED* LEDs[LED_COUNT];

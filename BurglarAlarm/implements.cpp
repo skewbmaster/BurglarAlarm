@@ -22,10 +22,6 @@ void HoldSensor::Reset() {
   detected = false;
 }
 
-MotionSensor::MotionSensor(int sensorPin) : HoldSensor(sensorPin) {
-
-}
-
 TriggerSensor::TriggerSensor(int sensorPin) : ArduinoInput(sensorPin) {
   triggered = false; 
   lastState = LOW; 
@@ -115,7 +111,7 @@ ControlPanel::ControlPanel(Buzzer* buzzerObject) {
   buzzer = buzzerObject;
   communication = new SerialCommunicationDevice();
   windowSensor = new HoldSensor(WINDOW_SENSOR_PIN);
-  motionSensor = new MotionSensor(MOTION_SENSOR_PIN);
+  motionSensor = new TriggerSensor(MOTION_SENSOR_PIN);
   doorSolenoidButton = new TriggerSensor(DOOR_RFID_BUTTON_PIN);
   solenoidLock = new Solenoid(SOLENOID_PIN);
 
@@ -141,7 +137,7 @@ void ControlPanel::Update() {
     return;
   }
   LEDs[ArmedLED]->SetState(HIGH);
-  if (windowSensor->GetState() || motionSensor->GetState()) {
+  if (windowSensor->GetState() || motionSensor->IsTriggered()) {
     SoundAlarm();
     return;
   } 
@@ -159,8 +155,8 @@ void ControlPanel::UnlockHandler() {
     solenoidLock->ChangeLockState();
     LEDs[DoorLED]->FlipState();
     doorSolenoidButton->Reset();
-    //TODO send message saying door changed open state
-    //communication->Send
+    // Send message saying door changed open state
+    communication->SendMessage(DOOR_MSG);
     if (alarmArmed) {
       timerStart = millis();
       confirmingIdentity = true;
@@ -195,6 +191,8 @@ void ControlPanel::UnlockHandler() {
 ControlPanel::EntryOutcome ControlPanel::CommunicateEntry() {
   //TODO Send request to confirm identity - either facial or pin
   //TODO Receive confirmation from python
+  communication->SendMessage(ENTRY_MSG);
+
   EntryOutcome outcome = Success;
   /*if (outcome == Success) {
     SetLock(false);
